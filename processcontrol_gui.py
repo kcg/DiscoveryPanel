@@ -1,23 +1,31 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 import sys
 from processcontrol import ProcessControl
+import time
 
 
-class UpdateTerminalObject(QtCore.QObject):
+class WatchProcessObject(QtCore.QObject):
     
-    updated = QtCore.pyqtSignal(str)
-    finished = QtCore.pyqtSignal()
+    terminalUpdate = QtCore.pyqtSignal(str)
+    processStopped = QtCore.pyqtSignal()
     
     def __init__(self, procControl):
         super().__init__()
         self.pc = procControl
 
-    def runUpdate(self):
-        while self.pc.is_running():
-            out = self.pc.get_output()
-            self.updated.emit(out)
-            QtCore.QThread.sleep(0.05)
-        self.finished.emit()
+    def runWatcher(self):
+        while True:
+            if self.pc.is_running():
+                out = self.pc.get_output()
+                # Update terminal with output of process
+                self.terminalUpdate.emit(out)
+                # Wait to not clock CPU
+                time.sleep(0.05)
+                # Process has stopped
+                if not self.pc.is_running():
+                    self.processStopped.emit()
+            else:
+                time.sleep(0.05)
 
 
 class ProcessControlFrame(QtWidgets.QFrame):
@@ -90,6 +98,16 @@ class ProcessControlFrame(QtWidgets.QFrame):
         self.verticalFrameLayout.addWidget(self.terminalTextEdit)
         self.terminalTextEdit.setVisible(False)
 
+        # Create Watcher Thread for surveying processControl
+        self.watcherThread = QtCore.QThread()
+        self.watcherThread.setObjectName("watcherThread")
+        self.watchobj = WatchProcessObject(self.process)
+        self.watchobj.moveToThread(self.watcherThread)
+        self.watchobj.terminalUpdate.connect(self.updateTerminal)
+        self.watchobj.processStopped.connect(self.processFinished)
+        self.watcherThread.started.connect(self.watchobj.runWatcher)
+        self.watcherThread.start()
+
         # Connect signals to functions
         self.connectSignals()
 
@@ -100,18 +118,6 @@ class ProcessControlFrame(QtWidgets.QFrame):
     def run(self):
         self.terminalTextEdit.setPlainText("$ " + self.process.command + "\n")
         self.process.start()
-        #self.thread = UpdateTerminalThread(self.process)
-        #self.thread.updated.connect(self.updateTerminal)
-        #self.thread.finished.connect(self.processFinished)
-        #self.thread.start()
-
-        self.objThread = QtCore.QThread()
-        self.obj = UpdateTerminalObject(self.process)
-        self.obj.moveToThread(self.objThread)
-        self.obj.finished.connect(self.processFinished)
-        self.obj.updated.connect(self.updateTerminal)
-        self.objThread.started.connect(self.obj.runUpdate)
-        self.objThread.start()
 
     def updateTerminal(self, newtext ):
         if newtext == "" or newtext == "\n":
@@ -122,10 +128,7 @@ class ProcessControlFrame(QtWidgets.QFrame):
 
     def processFinished(self):
         print("Finished")
-        self.objThread.quit()
-        self.objThread.wait()
-        del self.objThread
-        del self.obj
+        self.process.kill()
 
     def toggleTerminalVisibility(self):
         if self.terminalTextEdit.isVisible():
@@ -153,18 +156,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scrollAreaWidgetContents.setObjectName("scrollAreaWidgetContents")
         self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents)
         self.verticalLayout_2.setObjectName("verticalLayout_2")
-        self.pcFrames = []
 
         p1 = ProcessControl("Counting", "./testscript.sh")
         pcf = ProcessControlFrame(self.scrollAreaWidgetContents, p1)
-        self.pcFrames.append(pcf)
         self.verticalLayout_2.addWidget(pcf)
 
-        p2 = ProcessControl("Counting 2", "./testscript.sh")
+        p2 = ProcessControl("Geany", "geany")
         pcf2 = ProcessControlFrame(self.scrollAreaWidgetContents, p2)
-        self.pcFrames.append(pcf2)
         self.verticalLayout_2.addWidget(pcf2)
-
 
         spacerItem1 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_2.addItem(spacerItem1)
