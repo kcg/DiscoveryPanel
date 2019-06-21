@@ -1,13 +1,17 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
+from LedIndicatorWidget import LedIndicator
 import sys
 from processcontrol import ProcessControl
 import time
+import config as cfg
+import psutil
 
 
 class WatchProcessObject(QtCore.QObject):
     
     terminalUpdate = QtCore.pyqtSignal(str)
     processStopped = QtCore.pyqtSignal()
+    sendStats = QtCore.pyqtSignal(dict)
     
     def __init__(self, procControl):
         super().__init__()
@@ -19,6 +23,8 @@ class WatchProcessObject(QtCore.QObject):
                 out = self.pc.get_output()
                 # Update terminal with output of process
                 self.terminalUpdate.emit(out)
+                # Send statistics to GUI
+                self.sendStats.emit(self.getStats())
                 # Wait to not clock CPU
                 time.sleep(0.05)
                 # Process has stopped
@@ -26,6 +32,15 @@ class WatchProcessObject(QtCore.QObject):
                     self.processStopped.emit()
             else:
                 time.sleep(0.05)
+
+    def getStats(self):
+        p = psutil.Process(self.pc.process.pid)
+        cpu = p.cpu_percent() / psutil.cpu_count()
+        mem = p.memory_info()[0] / float(2 ** 20)
+        for child in p.children(recursive=True):
+            mem += child.memory_info()[0] / float(2 ** 20)
+            cpu += child.cpu_percent() / psutil.cpu_count()
+        return {"cpu": cpu, "mem": mem}
 
 
 class ProcessControlFrame(QtWidgets.QFrame):
@@ -44,8 +59,10 @@ class ProcessControlFrame(QtWidgets.QFrame):
         # Process row
         self.ProcessLayout = QtWidgets.QHBoxLayout()
 
+        # Name
         self.processNameLabel = QtWidgets.QLabel(self)
         self.processNameLabel.setText(self.process.name)
+        self.processNameLabel.setStyleSheet("font-weight: bold;")
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -53,9 +70,21 @@ class ProcessControlFrame(QtWidgets.QFrame):
         self.processNameLabel.setSizePolicy(sizePolicy)
         self.ProcessLayout.addWidget(self.processNameLabel)
 
+        # Spacer
         spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.ProcessLayout.addItem(spacerItem)
+        
+        # Statistics
+        self.statsNameLabel = QtWidgets.QLabel(self)
+        self.statsNameLabel.setText("CPU: - , MEM: - ")
+        self.ProcessLayout.addWidget(self.statsNameLabel)
 
+        # LED
+        self.led = LedIndicator(self)
+        self.led.setDisabled(True)
+        self.ProcessLayout.addWidget(self.led)
+
+        # Run button
         self.runButton = QtWidgets.QPushButton(self)
         self.runButton.setText("Run")
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
@@ -67,6 +96,19 @@ class ProcessControlFrame(QtWidgets.QFrame):
         self.runButton.setMaximumSize(QtCore.QSize(40, 40))
         self.ProcessLayout.addWidget(self.runButton)
 
+        # Stop button
+        self.stopButton = QtWidgets.QPushButton(self)
+        self.stopButton.setText("Stop")
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.stopButton.sizePolicy().hasHeightForWidth())
+        self.stopButton.setSizePolicy(sizePolicy)
+        self.stopButton.setMinimumSize(QtCore.QSize(30, 30))
+        self.stopButton.setMaximumSize(QtCore.QSize(40, 40))
+        self.ProcessLayout.addWidget(self.stopButton)
+
+        # Checkbox output
         self.showOutputBox = QtWidgets.QCheckBox(self)
         self.showOutputBox.setText("Output")
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
@@ -105,6 +147,7 @@ class ProcessControlFrame(QtWidgets.QFrame):
         self.watchobj.moveToThread(self.watcherThread)
         self.watchobj.terminalUpdate.connect(self.updateTerminal)
         self.watchobj.processStopped.connect(self.processFinished)
+        self.watchobj.sendStats.connect(self.updateStats)
         self.watcherThread.started.connect(self.watchobj.runWatcher)
         self.watcherThread.start()
 
@@ -113,11 +156,19 @@ class ProcessControlFrame(QtWidgets.QFrame):
 
     def connectSignals(self):
         self.runButton.clicked.connect(self.run)
+        self.stopButton.clicked.connect(self.stop)
         self.showOutputBox.stateChanged.connect(self.toggleTerminalVisibility)
 
     def run(self):
+        if self.process.is_running():
+            return
         self.terminalTextEdit.setPlainText("$ " + self.process.command + "\n")
+        self.led.setChecked(True)
         self.process.start()
+
+    def stop(self):
+        self.processFinished()
+        self.updateTerminal(">>> Stopped")
 
     def updateTerminal(self, newtext ):
         if newtext == "" or newtext == "\n":
@@ -126,8 +177,12 @@ class ProcessControlFrame(QtWidgets.QFrame):
         self.terminalTextEdit.setPlainText(existing + newtext)
         self.terminalTextEdit.verticalScrollBar().setValue(self.terminalTextEdit.verticalScrollBar().maximum())
 
+    def updateStats(self, stats):
+        self.statsNameLabel.setText("CPU: " + str(round(stats["cpu"],2)) + "% , MEM: " + str(round(stats["mem"],2)) + " MiB ")
+
     def processFinished(self):
-        print("Finished")
+        self.led.setChecked(False)
+        self.statsNameLabel.setText("CPU: - , MEM: - ")
         self.process.kill()
 
     def toggleTerminalVisibility(self):
@@ -157,13 +212,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents)
         self.verticalLayout_2.setObjectName("verticalLayout_2")
 
-        p1 = ProcessControl("Counting", "./testscript.sh")
-        pcf = ProcessControlFrame(self.scrollAreaWidgetContents, p1)
-        self.verticalLayout_2.addWidget(pcf)
-
-        p2 = ProcessControl("Geany", "geany")
-        pcf2 = ProcessControlFrame(self.scrollAreaWidgetContents, p2)
-        self.verticalLayout_2.addWidget(pcf2)
+        for p in cfg.processlist:
+            pc = ProcessControl(p["name"], p["command"])
+            if p["autostart"]:
+                pc.start()
+            pcf = ProcessControlFrame(self.scrollAreaWidgetContents, pc)
+            self.verticalLayout_2.addWidget(pcf)
 
         spacerItem1 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_2.addItem(spacerItem1)
@@ -173,11 +227,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.horizontalLayout_4.setObjectName("horizontalLayout_4")
         spacerItem2 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_4.addItem(spacerItem2)
-        self.pushButton = QtWidgets.QPushButton(self.centralwidget)
-        self.pushButton.setText("Add process")
-        self.pushButton.setEnabled(False)
-        self.pushButton.setObjectName("pushButton")
-        self.horizontalLayout_4.addWidget(self.pushButton)
+        #self.pushButton = QtWidgets.QPushButton(self.centralwidget)
+        #self.pushButton.setText("Add process")
+        #self.pushButton.setEnabled(False)
+        #self.pushButton.setObjectName("pushButton")
+        #self.horizontalLayout_4.addWidget(self.pushButton)
         self.verticalLayout_3.addLayout(self.horizontalLayout_4)
         self.setCentralWidget(self.centralwidget)
 

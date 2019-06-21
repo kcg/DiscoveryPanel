@@ -33,7 +33,7 @@ class ProcessControl:
             self.thread.start()
 
     def output_reader(self):
-        while True:
+        while True and not self.process is None:
             self.queue.put(self.process.stdout.readline())
             time.sleep(0.05) # this is important and without it would slow down the MainThread
 
@@ -72,13 +72,14 @@ class ProcessControl:
 if __name__ == "__main__":
 
     # Simple list command
-    #p1 = ProcessControl("Test1", "ls -l")
-    #p1.start()
-    #print(p1.get_output())
-    #p1.stop()
+    p1 = ProcessControl("Test1", "ls -l")
+    p1.start()
+    #time.sleep(2)
+    print(p1.get_output())
+    p1.stop()
 
     # Long running command
-    p2 = ProcessControl("Test2", "./testscript.sh")
+    """p2 = ProcessControl("Test2", "./testscript.sh")
     p2.start()
     print(p2.get_output())
     time.sleep(2)
@@ -91,4 +92,4 @@ if __name__ == "__main__":
     time.sleep(2)
     print(p2.is_running())
     p2.kill()
-    print("Done.")
+    print("Done.")"""
