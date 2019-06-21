@@ -5,3 +5,5 @@ do
 echo -e "$a "
 sleep 0.5
 done
+
+exit 0
