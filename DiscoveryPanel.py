@@ -34,12 +34,25 @@ class WatchProcessObject(QtCore.QObject):
                 time.sleep(0.05)
 
     def getStats(self):
+        if not self.pc.is_running():
+            return {"cpu": 0, "mem": 0}
         p = psutil.Process(self.pc.process.pid)
-        cpu = p.cpu_percent() / psutil.cpu_count()
-        mem = p.memory_info()[0] / float(2 ** 20)
+        p.cpu_percent()
+        time.sleep(0.05)
+        try:
+            cpu = p.cpu_percent() / psutil.cpu_count()
+            mem = p.memory_info()[0] / float(2 ** 20)
+        except:
+            cpu = 0
+            mem = 0
         for child in p.children(recursive=True):
             mem += child.memory_info()[0] / float(2 ** 20)
-            cpu += child.cpu_percent() / psutil.cpu_count()
+            child.cpu_percent()
+            time.sleep(0.05)
+            try:
+                cpu += child.cpu_percent() / psutil.cpu_count()
+            except:
+                pass
         return {"cpu": cpu, "mem": mem}
 
 
@@ -168,7 +181,7 @@ class ProcessControlFrame(QtWidgets.QFrame):
 
     def stop(self):
         self.processFinished()
-        self.updateTerminal(">>> Stopped")
+        #self.updateTerminal(">>> Stopped")
 
     def updateTerminal(self, newtext ):
         if newtext == "" or newtext == "\n":
@@ -214,10 +227,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         for p in cfg.processlist:
             pc = ProcessControl(p["name"], p["command"])
-            if p["autostart"]:
-                pc.start()
             pcf = ProcessControlFrame(self.scrollAreaWidgetContents, pc)
             self.verticalLayout_2.addWidget(pcf)
+            if p["autostart"]:
+                pcf.run()
 
         spacerItem1 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_2.addItem(spacerItem1)
