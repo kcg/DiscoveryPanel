@@ -8,6 +8,7 @@ import signal
 from threading import Thread
 from queue import Queue, Empty
 import time
+import psutil
 
 
 class ProcessControl:
@@ -23,34 +24,40 @@ class ProcessControl:
                                         shell=True, 
                                         stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT,
-                                        preexec_fn=os.setsid,
+                                        start_new_session=True,
                                         encoding="utf-8")
         self.queue = Queue()
         if not self.thread:
             self.thread = Thread(target=self.output_reader)
             self.thread.setName("PCoutputThread_" + self.name)
-            #self.thread.daemon = True
+            self.thread.daemon = True
             self.thread.start()
 
     def output_reader(self):
-        while True and not self.process is None:
+        while not self.process is None:
             self.queue.put(self.process.stdout.readline())
             time.sleep(0.05) # this is important and without it would slow down the MainThread
+        time.sleep(0.05)
 
     def stop(self):
-        self.stop_or_kill(sig=signal.SIGTERM)
+        try:
+            current_process = psutil.Process(self.process.pid)
+            children = current_process.children(recursive=True)
+            for child in children:
+                child.terminate()
+        except:
+            pass
+        self.process.terminate()
 
     def kill(self):
-        self.stop_or_kill(sig=signal.SIGKILL)
-
-    def stop_or_kill(self, sig=signal.SIGTERM):
         try:
-            os.killpg(os.getpgid(self.process.pid), sig)
-            self.process = None
-            return True
+            current_process = psutil.Process(self.process.pid)
+            children = current_process.children(recursive=True)
+            for child in children:
+                child.kill()
         except:
-            return False
-        time.sleep(0.05)
+            pass
+        self.process.kill()
 
     def get_output(self):
         out = ""
@@ -72,24 +79,25 @@ class ProcessControl:
 if __name__ == "__main__":
 
     # Simple list command
-    p1 = ProcessControl("Test1", "ls -l")
-    p1.start()
+    #p1 = ProcessControl("Test1", "ls -l")
+    #p1.start()
     #time.sleep(2)
-    print(p1.get_output())
-    p1.stop()
+    #print(p1.get_output())
+    #p1.stop()
 
     # Long running command
-    """p2 = ProcessControl("Test2", "./testscript.sh")
+    p2 = ProcessControl("Test2", "./testscript.sh")
     p2.start()
-    print(p2.get_output())
-    time.sleep(2)
-    print("---")
-    print(p2.get_output())
-    time.sleep(2)
-    print("---")
-    print(p2.is_running())
-    print(p2.get_output())
-    time.sleep(2)
-    print(p2.is_running())
+    startt = time.time()
+    t = 0
+    while t < 2:
+        t = time.time() - startt
+        print(p2.get_output())
+        time.sleep(0.2)
     p2.kill()
-    print("Done.")"""
+    time.sleep(1)
+    p2.start()
+    time.sleep(3)
+    print(p2.get_output())
+    p2.kill()
+    print("Done.")
