@@ -240,14 +240,80 @@ class MainWindow(QtWidgets.QMainWindow):
         self.horizontalLayout_4.setObjectName("horizontalLayout_4")
         spacerItem2 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_4.addItem(spacerItem2)
-        #self.pushButton = QtWidgets.QPushButton(self.centralwidget)
-        #self.pushButton.setText("Add process")
-        #self.pushButton.setEnabled(False)
-        #self.pushButton.setObjectName("pushButton")
-        #self.horizontalLayout_4.addWidget(self.pushButton)
+        self.pushButton = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButton.setText("Add process")
+        self.pushButton.setObjectName("pushButton")
+        self.pushButton.clicked.connect(self.addProcess)
+        self.horizontalLayout_4.addWidget(self.pushButton)
         self.verticalLayout_3.addLayout(self.horizontalLayout_4)
         self.setCentralWidget(self.centralwidget)
 
+    def addProcess(self):
+        self.newPcDialog = NewProcessControlDialog()
+        if self.newPcDialog.exec_():
+            name, cmd, autostart = self.newPcDialog.getNewProcessControl()
+            # Add values to config
+            with open("config.py","r") as f:
+                cfg = f.read()
+            index = cfg.find("]")
+            newline = ',\n\t{"name": "' + str(name) + '", "command": "' + str(cmd) + '", "autostart": ' + str(autostart) + '}\n]'
+            newcfg = cfg[:index-1] + newline
+            with open("config.py","w") as f:
+                f.write(newcfg)
+            # Add pcf for current session
+            newpc = ProcessControl(name, cmd)
+            newpcf = ProcessControlFrame(self.scrollAreaWidgetContents, newpc)
+            self.verticalLayout_2.insertWidget(self.verticalLayout_2.count()-1,newpcf)
+
+
+class NewProcessControlDialog(QtWidgets.QDialog):
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("Dialog")
+        self.resize(400, 224)
+        self.verticalLayout = QtWidgets.QVBoxLayout(self)
+        self.verticalLayout.setObjectName("verticalLayout")
+        self.label = QtWidgets.QLabel(self)
+        self.label.setObjectName("label")
+        self.verticalLayout.addWidget(self.label)
+        self.lineEdit = QtWidgets.QLineEdit(self)
+        self.lineEdit.setObjectName("lineEdit")
+        self.verticalLayout.addWidget(self.lineEdit)
+        self.label_2 = QtWidgets.QLabel(self)
+        self.label_2.setObjectName("label_2")
+        self.verticalLayout.addWidget(self.label_2)
+        self.lineEdit_2 = QtWidgets.QLineEdit(self)
+        self.lineEdit_2.setObjectName("lineEdit_2")
+        self.verticalLayout.addWidget(self.lineEdit_2)
+        self.checkBox = QtWidgets.QCheckBox(self)
+        self.checkBox.setObjectName("checkBox")
+        self.verticalLayout.addWidget(self.checkBox)
+        spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        self.verticalLayout.addItem(spacerItem)
+        self.buttonBox = QtWidgets.QDialogButtonBox(self)
+        self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
+        self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel|QtWidgets.QDialogButtonBox.Ok)
+        self.buttonBox.setObjectName("buttonBox")
+        self.verticalLayout.addWidget(self.buttonBox)
+
+        _translate = QtCore.QCoreApplication.translate
+        self.setWindowTitle(_translate("Dialog", "Add Process Control"))
+        self.label.setText(_translate("Dialog", "Name / Description:"))
+        self.label_2.setText(_translate("Dialog", "Command:"))
+        self.checkBox.setText(_translate("Dialog", "Autostart (on start of DiscoveryPanel)"))
+        
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+        QtCore.QMetaObject.connectSlotsByName(self)
+        self.show()
+
+
+    def getNewProcessControl(self):
+        name = self.lineEdit.text()
+        cmd = self.lineEdit_2.text()
+        autostart = self.checkBox.isChecked()
+        return (name, cmd, autostart)
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
