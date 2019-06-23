@@ -29,7 +29,7 @@ class ProcessControl:
         if not self.thread:
             self.thread = Thread(target=self.output_reader)
             self.thread.setName("PCoutputThread_" + self.name)
-            self.thread.daemon = True
+            #self.thread.daemon = True
             self.thread.start()
 
     def output_reader(self):

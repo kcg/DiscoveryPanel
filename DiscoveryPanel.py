@@ -13,9 +13,9 @@ class WatchProcessObject(QtCore.QObject):
     processStopped = QtCore.pyqtSignal()
     sendStats = QtCore.pyqtSignal(dict)
     
-    def __init__(self, procControl):
+    def __init__(self, proCtrl):
         super().__init__()
-        self.pc = procControl
+        self.pc = proCtrl
 
     def runWatcher(self):
         while True:
@@ -58,10 +58,10 @@ class WatchProcessObject(QtCore.QObject):
 
 class ProcessControlFrame(QtWidgets.QFrame):
 
-    def __init__(self, parent, proc):
+    def __init__(self, parent, proCtrl):
         super().__init__()
 
-        self.process = proc
+        self.proCtrl = proCtrl
 
         # parent should probably be a QtWidgets.QWidget() e.g. "scrollAreaWidgetContents"
         QtWidgets.QFrame(parent)
@@ -74,7 +74,7 @@ class ProcessControlFrame(QtWidgets.QFrame):
 
         # Name
         self.processNameLabel = QtWidgets.QLabel(self)
-        self.processNameLabel.setText(self.process.name)
+        self.processNameLabel.setText(self.proCtrl.name)
         self.processNameLabel.setStyleSheet("font-weight: bold;")
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
@@ -137,7 +137,7 @@ class ProcessControlFrame(QtWidgets.QFrame):
 
         # Terminal view
         self.terminalTextEdit = QtWidgets.QPlainTextEdit(self)
-        self.terminalTextEdit.setPlaceholderText("$ " + self.process.command)
+        self.terminalTextEdit.setPlaceholderText("$ " + self.proCtrl.command)
         self.terminalTextEdit.setEnabled(True)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -156,7 +156,7 @@ class ProcessControlFrame(QtWidgets.QFrame):
         # Create Watcher Thread for surveying processControl
         self.watcherThread = QtCore.QThread()
         self.watcherThread.setObjectName("watcherThread")
-        self.watchobj = WatchProcessObject(self.process)
+        self.watchobj = WatchProcessObject(self.proCtrl)
         self.watchobj.moveToThread(self.watcherThread)
         self.watchobj.terminalUpdate.connect(self.updateTerminal)
         self.watchobj.processStopped.connect(self.processFinished)
@@ -173,15 +173,15 @@ class ProcessControlFrame(QtWidgets.QFrame):
         self.showOutputBox.stateChanged.connect(self.toggleTerminalVisibility)
 
     def run(self):
-        if self.process.is_running():
+        if self.proCtrl.is_running():
             return
-        self.terminalTextEdit.setPlainText("$ " + self.process.command + "\n")
+        self.updateTerminal("$ " + self.proCtrl.command + "\n")
         self.led.setChecked(True)
-        self.process.start()
+        self.proCtrl.start()
 
     def stop(self):
         self.processFinished()
-        #self.updateTerminal(">>> Stopped")
+        self.updateTerminal(">>> Stopped by user\n\n")
 
     def updateTerminal(self, newtext ):
         if newtext == "" or newtext == "\n":
@@ -196,7 +196,7 @@ class ProcessControlFrame(QtWidgets.QFrame):
     def processFinished(self):
         self.led.setChecked(False)
         self.statsNameLabel.setText("CPU: - , MEM: - ")
-        self.process.kill()
+        self.proCtrl.kill()
 
     def toggleTerminalVisibility(self):
         if self.terminalTextEdit.isVisible():
