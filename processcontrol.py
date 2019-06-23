@@ -32,6 +32,11 @@ class ProcessControl:
             self.thread.setName("PCoutputThread_" + self.name)
             self.thread.daemon = True
             self.thread.start()
+        time.sleep(0.05)
+        if self.is_running():
+            return True
+        else:
+            return False
 
     def output_reader(self):
         while not self.process is None:

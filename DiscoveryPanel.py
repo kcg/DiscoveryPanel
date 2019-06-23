@@ -175,11 +175,17 @@ class ProcessControlFrame(QtWidgets.QFrame):
     def run(self):
         if self.proCtrl.is_running():
             return
-        self.updateTerminal("$ " + self.proCtrl.command + "\n")
-        self.led.setChecked(True)
-        self.proCtrl.start()
+        success = self.proCtrl.start()
+        if success:
+            self.updateTerminal("$ " + self.proCtrl.command + "\n")
+            self.led.setChecked(True)
+        else:
+            msg = "\n>>> Process could not be started. Check command and/or paths."
+            self.terminalTextEdit.setPlaceholderText("$ " + self.proCtrl.command + msg)
 
     def stop(self):
+        if not self.proCtrl.is_running():
+            return
         self.processFinished()
         self.updateTerminal(">>> Stopped by user\n\n")
 
